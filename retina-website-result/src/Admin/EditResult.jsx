@@ -25,7 +25,7 @@ const EditResult = () => {
     const fetchData = async () => {
       try {
         const response = await axios.get(
-          `http://localhost:5000/admin/results/${_id}`
+          `https://retina-result-server.vercel.app/admin/results/${_id}`,{withCredentials:true}
         );
         setStudentData(response.data);
       } catch (error) {
@@ -47,7 +47,7 @@ const EditResult = () => {
     e.preventDefault();
     try {
       await axios.put(
-        `http://localhost:5000/admin/results/${_id}`,
+        `https://retina-result-server.vercel.app/admin/results/${_id}`,
         studentData
       );
       Swal.fire({

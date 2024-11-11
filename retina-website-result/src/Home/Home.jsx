@@ -8,14 +8,13 @@ const Home = () => {
   const [results, setResults] = useState([]);
   const [showResults, setShowResults] = useState(false);
   const [studentInfo, setStudentInfo] = useState(null);
+  const [loading, setLoading] = useState(false);
 
   const contentRef = useRef(null);
 
   const fetchStudentInfo = async () => {
     try {
-      const response = await axios.get("http://localhost:5000/basic-info", {
-        params: { Roll, Mobile },
-      });
+      const response = await axios.get("https://retina-result-server.vercel.app/basic-info", {params: { Roll, Mobile }},{withCredentials:true});
       setStudentInfo(response.data);
     } catch (error) {
       console.error(error);
@@ -24,14 +23,18 @@ const Home = () => {
   };
 
   const fetchResults = async () => {
+    setLoading(true);
     try {
-      const response = await axios.get("http://localhost:5000/results", {
-        params: { Roll, Mobile },
-      });
+      const response = await axios.get("https://retina-result-server.vercel.app/results",{params: { Roll, Mobile }},{withCredentials:true});
       setResults(response.data);
       setShowResults(true);
+      setRollNo("");
+      setMobileNo("");
     } catch (error) {
       console.error(error);
+    }
+    finally {
+      setLoading(false);
     }
   };
 
@@ -70,10 +73,11 @@ const Home = () => {
               <span className="label-text">Mobile Number</span>
             </label>
             <input
-              type="password"
+              type="text"
               placeholder="Enter Mobile Number"
               value={Mobile}
               autoComplete="off"
+              required
               onChange={(e) => setMobileNo(e.target.value)}
               className="input input-bordered w-full"
             />
@@ -88,6 +92,12 @@ const Home = () => {
           </div>
         </div>
       </div>
+      {loading ? (
+        <div className="flex items-center justify-center h-64">
+          <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-blue-500 border-solid"></div>
+        </div>
+      ) : (
+      <>
 
       {showResults && (
         <div
@@ -118,6 +128,7 @@ const Home = () => {
             </div>
           )}
 
+        
           {results?.length > 0 ? (
             <table className="w-full text-left border-collapse overflow-hidden rounded-lg shadow-sm">
               <thead className="bg-gray-200">
@@ -134,9 +145,9 @@ const Home = () => {
                   <th className="py-2 sm:py-3 px-2 sm:px-4 border-b font-semibold text-gray-700">
                     (-)Marks
                   </th>
-                  <th className="py-2 sm:py-3 px-2 sm:px-4 border-b font-semibold text-gray-700">
-                    Deduction
-                  </th>
+                  {/* <th className="py-2 sm:py-3 px-2 sm:px-4 border-b font-semibold text-gray-700">
+                    Subject
+                  </th> */}
                   <th className="py-2 sm:py-3 px-2 sm:px-4 border-b font-semibold text-gray-700">
                     Position
                   </th>
@@ -161,9 +172,9 @@ const Home = () => {
                     <td className="py-2 sm:py-3 px-2 sm:px-4">
                       {result?.Neg_mark}
                     </td>
-                    <td className="py-2 sm:py-3 px-2 sm:px-4">
-                      {result?.D}
-                    </td>
+                    {/* <td className="py-2 sm:py-3 px-2 sm:px-4">
+                      {result?.Subject}
+                    </td> */}
                     <td className="py-2 sm:py-3 px-2 sm:px-4">
                       {result.Position}
                     </td>
@@ -177,8 +188,12 @@ const Home = () => {
               No results found for the entered details.
             </p>
           )}
+        
         </div>
       )}
+      </>
+      )}
+      
       {showResults && studentInfo && results.length > 0 && (
         <button onClick={handlePrint} className="btn btn-secondary mt-6">
           Print Result

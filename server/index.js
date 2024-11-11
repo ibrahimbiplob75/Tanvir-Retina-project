@@ -4,13 +4,23 @@ const multer = require('multer');
 const fs = require('fs');
 const { MongoClient, ObjectId, ServerApiVersion } = require('mongodb');
 const xlsx = require('xlsx');
+const compression = require('compression'); // For data compression
 require('dotenv').config();
 
 const PORT = process.env.PORT || 5000;
 const app = express();
-app.use(cors());
-app.use(express.json());
 
+const corsOptions = {
+  origin: ['http://localhost:5173','https://retina-result.web.app', 'https://result.rajshahiretina.com'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  credentials: true,
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  optionsSuccessStatus: 200,
+};
+app.use(cors(corsOptions));
+app.use(express.json());
+app.use(compression()); // Enable compression middleware
+app.options("", cors(corsOptions));
 
 const client = new MongoClient(process.env.DB_URI, {
   serverApi: {
@@ -20,11 +30,16 @@ const client = new MongoClient(process.env.DB_URI, {
   }
 });
 
-
 async function getCollections() {
   try {
-    const db = client.db("studentResults");
+    const db = client.db("RetinaStudentResults");
     const resultsCollection = db.collection("results");
+
+    // Ensure indexing for frequently queried fields
+    await resultsCollection.createIndex({ Roll: 1 });
+    await resultsCollection.createIndex({ Student: 1 });
+    await resultsCollection.createIndex({ Guardian: 1 });
+
     return { resultsCollection };
   } catch (error) {
     console.error("Failed to connect to MongoDB", error);
@@ -32,60 +47,70 @@ async function getCollections() {
   }
 }
 
+const storage = multer.memoryStorage();
+const upload = multer({ storage: multer.memoryStorage() });
 
-const upload = multer({ dest: 'uploads/' });
-
-
+// Upload endpoint
 app.post('/upload', upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).send("No file uploaded.");
 
-  const filePath = req.file.path;
   try {
     const { resultsCollection } = await getCollections();
-    const workbook = xlsx.readFile(filePath);
+
+    // Read workbook from the buffer
+    const workbook = xlsx.read(req.file.buffer, { type: 'buffer' });
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
     const jsonData = xlsx.utils.sheet_to_json(sheet);
 
+    // Insert the data into MongoDB
     await resultsCollection.insertMany(jsonData);
     res.send("File uploaded and data stored successfully");
   } catch (error) {
     console.error("Error processing file:", error);
     res.status(500).send("Failed to process file");
-  } finally {
-    fs.unlinkSync(filePath); // Clean up uploaded file
   }
 });
 
-// Route to get basic student info
+// Basic info route
 app.get("/basic-info", async (req, res) => {
   const { Roll, Mobile } = req.query;
+  const teacherCode = "@lecturerRajRetina";
+
   if (!Roll || !Mobile) {
     return res.status(400).json({ message: "Roll and Mobile number are required" });
   }
 
   try {
     const { resultsCollection } = await getCollections();
+
     const query = {
       Roll: parseInt(Roll),
-      $or: [{ Student: Mobile }, { Guardian: Mobile }],
+      $or: [
+        { Student: Mobile },
+        { Guardian: Mobile },
+        { $expr: { $eq: [Mobile, teacherCode] } }
+      ]
     };
 
     const studentData = await resultsCollection.findOne(query, {
       projection: { _id: 0, Name: 1, Roll: 1, Batch: 1 },
     });
-    studentData
-      ? res.status(200).json(studentData)
-      : res.status(404).json({ message: "Student not found" });
+
+    if (studentData) {
+      res.status(200).json(studentData);
+    } else {
+      res.status(404).json({ message: "Student not found" });
+    }
   } catch (error) {
     console.error("Error retrieving basic info:", error);
     res.status(500).json({ message: "Error retrieving data" });
   }
 });
 
-
+// Results route
 app.get('/results', async (req, res) => {
   const { Roll, Mobile } = req.query;
-  const teacherCode = "+88017777777"; // Replace this with the actual teacher code
+  const teacherCode = "@lecturerRajRetina"; // Replace this with the actual teacher code
 
   try {
     const { resultsCollection } = await getCollections();
@@ -111,10 +136,30 @@ app.get('/results', async (req, res) => {
   }
 });
 
+// Admin results with pagination
+app.get('/admin/results', async (req, res) => {
+  const page = parseInt(req.query.page) || 1;
+  const limit = parseInt(req.query.limit) || 100;
+  const skip = (page - 1) * limit;
 
+  try {
+    const { resultsCollection } = await getCollections();
+    const results = await resultsCollection.find().skip(skip).limit(limit).toArray();
+    const totalResults = await resultsCollection.countDocuments();
 
+    res.json({
+      results,
+      currentPage: page,
+      totalPages: Math.ceil(totalResults / limit),
+      totalResults,
+    });
+  } catch (error) {
+    console.error("Error retrieving paginated results:", error);
+    res.status(500).json({ message: "Failed to retrieve results" });
+  }
+});
 
-
+// Fetch single result by ID
 app.get('/admin/results/:id', async (req, res) => {
   const { id } = req.params;
   try {
@@ -129,11 +174,11 @@ app.get('/admin/results/:id', async (req, res) => {
   }
 });
 
-
+// Update result by ID
 app.put('/admin/results/:id', async (req, res) => {
   const { id } = req.params;
   const updatedData = req.body;
-  delete updatedData._id; 
+  delete updatedData._id;
   try {
     const { resultsCollection } = await getCollections();
     const updateResult = await resultsCollection.updateOne(
@@ -149,19 +194,7 @@ app.put('/admin/results/:id', async (req, res) => {
   }
 });
 
-
-app.get('/admin/results', async (req, res) => {
-  try {
-    const { resultsCollection } = await getCollections();
-    const results = await resultsCollection.find().toArray();
-    res.send(results);
-  } catch (error) {
-    console.error("Error retrieving all results:", error);
-    res.status(500).json({ message: "Failed to retrieve results" });
-  }
-});
-
-
+// Delete result by ID
 app.delete("/admin/results/:id", async (req, res) => {
   const { id } = req.params;
   try {
@@ -174,6 +207,11 @@ app.delete("/admin/results/:id", async (req, res) => {
     console.error("Error deleting result:", error);
     res.status(500).json({ message: "Failed to delete result" });
   }
+});
+
+// Root endpoint
+app.get('/', (req, res) => {
+  res.send('Retina Rajshahi Medical server is ready');
 });
 
 // Start server

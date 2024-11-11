@@ -35,9 +35,10 @@ const AdminUpload = () => {
     formData.append("file", file, uniqueFileName);
 
     try {
-      await axios.post("http://localhost:5000/upload", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
+      await axios.post("https://retina-result-server.vercel.app/upload", formData ,{
+          headers: { "Content-Type": "multipart/form-data" },
+          withCredentials: true 
+        });
       setUploadStatus("File uploaded successfully!");
       Swal.fire({
         title: "Result File",

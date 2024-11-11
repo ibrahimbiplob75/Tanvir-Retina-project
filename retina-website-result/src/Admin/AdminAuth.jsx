@@ -5,7 +5,7 @@ const AdminAuth = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [inputPassword, setInputPassword] = useState("");
 
-  const defaultPassword = "admin123"; 
+  const defaultPassword = "Raj@RetinaAdmin.2024"; 
 
   const handleLogin = () => {
     if (inputPassword === defaultPassword) {
